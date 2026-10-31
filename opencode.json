@@ -1,28 +1,26 @@
 {
   "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "servers": {
-      "chrome-devtools": {
-        "type": "local",
-        "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
-      },
-      "context7": {
-        "type": "local",
-        "command": ["npx", "-y", "@upstash/context7-mcp"]
-      },
-      "next-devtools": {
-        "type": "local",
-        "command": ["npx", "-y", "next-devtools-mcp@latest"],
-        "cwd": "apps/web"
-      },
-      "sequential-thinking": {
-        "type": "local",
-        "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]
-      },
-      "shadcn": {
-        "type": "local",
-        "command": ["npx", "shadcn@latest", "mcp"]
-      }
+    "chrome-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "chrome-devtools-mcp@latest"]
+    },
+    "context7": {
+      "type": "local",
+      "command": ["npx", "-y", "@upstash/context7-mcp"]
+    },
+    "next-devtools": {
+      "type": "local",
+      "command": ["npx", "-y", "next-devtools-mcp@latest"],
+      "cwd": "frontend"
+    },
+    "sequential-thinking": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sequential-thinking"]
+    },
+    "shadcn": {
+      "type": "local",
+      "command": ["npx", "shadcn@latest", "mcp"]
     }
   }
 }
