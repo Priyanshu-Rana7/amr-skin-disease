@@ -1,14 +1,14 @@
-from flask import request
 from PIL import Image, UnidentifiedImageError
 import io
 from flask import Flask, jsonify, request, render_template
 from pathlib import Path
 import json
+import os
 
 import joblib
 import numpy as np
 import tensorflow as tf
-from flask import Flask, jsonify
+from werkzeug.exceptions import HTTPException
 
 
 # Project paths
@@ -24,6 +24,33 @@ app = Flask(
     __name__,
     template_folder=str(PROJECT_DIR / "templates")
 )
+app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+ALLOWED_ORIGINS = set(os.getenv("FRONTEND_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000").split(","))
+
+@app.after_request
+def allow_frontend(response):
+    origin = request.headers.get("Origin")
+    if origin in ALLOWED_ORIGINS:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    return response
+
+@app.errorhandler(413)
+def upload_too_large(_error):
+    return jsonify({"error": "Upload an image smaller than 8 MB."}), 413
+
+@app.errorhandler(Exception)
+def handle_error(error):
+    if isinstance(error, HTTPException):
+        return jsonify({"error": error.description}), error.code
+    app.logger.exception("Prediction service failure")
+    return jsonify({"error": "The prediction service could not complete this request. Please try again."}), 500
+
+@app.get("/api/health")
+def health():
+    return jsonify({"status": "ready", "models": ["skin", "amr"]})
 
 # Skin disease class labels
 CLASS_NAMES = {
@@ -94,6 +121,10 @@ def predict_skin():
             return jsonify({"error": "The uploaded file is empty."}), 400
 
         with Image.open(io.BytesIO(image_bytes)) as image:
+            if image.width * image.height > 20_000_000:
+                return jsonify({"error": "Choose an image with fewer than 20 million pixels."}), 400
+            if image.format not in {"JPEG", "PNG", "WEBP"}:
+                return jsonify({"error": "Upload a JPEG, PNG, or WebP image."}), 400
             image = image.convert("RGB")
             image = image.resize((28, 28))
             image_array = np.asarray(image, dtype=np.float32)
@@ -119,7 +150,7 @@ def predict_skin():
             )
         })
 
-    except (UnidentifiedImageError, OSError, ValueError):
+    except (UnidentifiedImageError, OSError, ValueError, Image.DecompressionBombError):
         return jsonify({
             "error": "Invalid or unsupported image. Please upload a valid image."
         }), 400
@@ -159,6 +190,12 @@ def predict_amr():
 
         if not np.isfinite(year_case):
             raise ValueError("Year Case must be a finite number.")
+        if not year_case.is_integer() or not 1900 <= year_case <= 2100:
+            raise ValueError("Year Case must be a whole year from 1900 to 2100.")
+        allowed = {"Sex": {"F", "M"}, "Age Group": {"13-18", "19-35", "36-59", "≤12", "≥60"}, "On Abx": {"No", "Yes"}}
+        for feature, values in allowed.items():
+            if str(data[feature]).strip() not in values:
+                raise ValueError(f"Invalid {feature} value.")
 
         # Keep the original feature names and order expected by the pipeline.
         import pandas as pd
@@ -207,4 +244,4 @@ def predict_amr():
 
 
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run(debug=os.getenv("FLASK_DEBUG", "0") == "1")
