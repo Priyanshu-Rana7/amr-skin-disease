@@ -2,32 +2,110 @@ $ErrorActionPreference = 'Stop'
 $project = $PSScriptRoot
 $backendPython = Join-Path $project '.venv\Scripts\python.exe'
 $frontendDir = Join-Path $project 'frontend'
+$backendPort = 5000
+$backendUrl = "http://127.0.0.1:$backendPort"
+$backendHealthUrl = "$backendUrl/api/health"
 
-if (-not (Test-Path -LiteralPath $backendPython)) { throw 'The project Python environment is missing. Create .venv and install the backend requirements first.' }
-if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) { throw 'pnpm is required to run the frontend.' }
+function Test-WebReady {
+    param(
+        [Parameter(Mandatory = $true)][string]$Url,
+        [int]$TimeoutSec = 3
+    )
 
+    # Invoke-WebRequest throws for refused/timed-out connections. With
+    # $ErrorActionPreference = 'Stop' that becomes a terminating error, so the
+    # call must always be wrapped in try/catch instead of using -ErrorAction.
+    try {
+        $response = Invoke-WebRequest -Uri $Url -TimeoutSec $TimeoutSec -UseBasicParsing
+        return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 500)
+    } catch {
+        return $false
+    }
+}
+
+function Test-PortAvailable {
+    param([Parameter(Mandatory = $true)][int]$Port)
+
+    $client = [System.Net.Sockets.TcpClient]::new()
+    try {
+        $connect = $client.ConnectAsync('127.0.0.1', $Port)
+        if ($connect.Wait(500) -and $client.Connected) {
+            return $false
+        }
+        return $true
+    } catch {
+        return $true
+    } finally {
+        $client.Dispose()
+    }
+}
+
+function Start-SkinLabWindow {
+    param(
+        [Parameter(Mandatory = $true)][string]$Command
+    )
+
+    Start-Process -FilePath 'powershell.exe' `
+        -WindowStyle Minimized `
+        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-Command', $Command) | Out-Null
+}
+
+if (-not (Test-Path -LiteralPath $backendPython)) {
+    throw 'The project Python environment is missing (.venv\Scripts\python.exe). Create .venv and install the backend requirements first.'
+}
+
+if (-not (Test-Path -LiteralPath (Join-Path $frontendDir 'node_modules'))) {
+    throw 'The frontend dependencies are missing (frontend\node_modules). Run "pnpm install" in the frontend folder first.'
+}
+
+if (-not (Get-Command pnpm -ErrorAction SilentlyContinue)) {
+    throw 'pnpm is required to run the frontend. Install it from https://pnpm.io/installation and retry.'
+}
+
+# Start the Flask backend unless a healthy instance is already listening.
+if (Test-WebReady -Url $backendHealthUrl -TimeoutSec 2) {
+    Write-Host "Backend already running at $backendUrl."
+} else {
+    if (-not (Test-PortAvailable -Port $backendPort)) {
+        throw "Port $backendPort is already in use by another application. Close it and retry, or stop the stale process."
+    }
+
+    $backendCommand = "Set-Location -LiteralPath '$project'; & '$backendPython' 'src/app.py'"
+    Write-Host 'Starting the Flask backend...'
+    Start-SkinLabWindow -Command $backendCommand
+
+    # TensorFlow model loading can take 20-60 seconds, so poll until ready.
+    $deadline = (Get-Date).AddSeconds(120)
+    while (-not (Test-WebReady -Url $backendHealthUrl -TimeoutSec 3)) {
+        if ((Get-Date) -ge $deadline) {
+            throw "The backend did not become ready at $backendHealthUrl. Check the minimized backend window for errors."
+        }
+        Start-Sleep -Seconds 2
+    }
+    Write-Host "Backend ready at $backendUrl."
+}
+
+# Pick the first free frontend port in the supported range.
 $port = 3000
-while ($port -le 3010) {
-    $probe = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $port)
-    try { $probe.Start(); $probe.Stop(); break } catch { $probe.Stop(); $port++ }
+while ($port -le 3010 -and -not (Test-PortAvailable -Port $port)) {
+    $port++
 }
-if ($port -gt 3010) { throw 'Ports 3000–3010 are all in use. Close another application and retry.' }
-
-$backendCheck = Invoke-WebRequest -Uri 'http://127.0.0.1:5000/api/health' -TimeoutSec 2 -ErrorAction SilentlyContinue
-if (-not $backendCheck) {
-    $backendCommand = "Set-Location '$project'; & '$backendPython' src/app.py"
-    Start-Process powershell.exe -WindowStyle Minimized -ArgumentList @('-NoExit','-Command',$backendCommand)
+if ($port -gt 3010) {
+    throw 'Ports 3000-3010 are all in use. Close another application and retry.'
 }
 
-$frontendCommand = "Set-Location '$frontendDir'; pnpm exec next dev --hostname 127.0.0.1 --port $port"
-Start-Process powershell.exe -WindowStyle Minimized -ArgumentList @('-NoExit','-Command',$frontendCommand)
+$frontendCommand = "Set-Location -LiteralPath '$frontendDir'; `$env:NEXT_TELEMETRY_DISABLED = '1'; pnpm exec next dev --hostname 127.0.0.1 --port $port"
+Write-Host "Starting the Next.js frontend on port $port..."
+Start-SkinLabWindow -Command $frontendCommand
 
-$deadline = (Get-Date).AddMinutes(2)
-$ready = $false
-do {
+$frontendUrl = "http://127.0.0.1:$port"
+$deadline = (Get-Date).AddMinutes(3)
+while (-not (Test-WebReady -Url $frontendUrl -TimeoutSec 5)) {
+    if ((Get-Date) -ge $deadline) {
+        throw "The website did not become ready at $frontendUrl. Check the minimized frontend window for errors."
+    }
     Start-Sleep -Seconds 2
-    try { $null = Invoke-WebRequest -Uri "http://127.0.0.1:$port" -TimeoutSec 3; $ready = $true } catch { }
-} while (-not $ready -and (Get-Date) -lt $deadline)
-if (-not $ready) { throw 'The website did not become ready. Check the minimized backend and frontend terminal windows.' }
-Start-Process "http://localhost:$port"
-Write-Host "SkinLab is running at http://localhost:$port. Close the backend and frontend terminal windows to stop it."
+}
+
+Start-Process $frontendUrl
+Write-Host "SkinLab is running at $frontendUrl. Close the backend and frontend terminal windows to stop it."
