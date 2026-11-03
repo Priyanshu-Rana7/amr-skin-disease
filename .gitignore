@@ -40,3 +40,8 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Test and run output
+test-results/
+playwright-report/
+logs/
