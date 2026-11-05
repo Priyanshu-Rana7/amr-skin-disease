@@ -1,9 +1,11 @@
 
 from pathlib import Path
+import io
 import json
 import joblib
 import numpy as np
 import tensorflow as tf
+from PIL import Image
 
 # Project root is the parent of src/
 PROJECT_DIR = Path(__file__).resolve().parent.parent
@@ -75,4 +77,20 @@ print("Probabilities:", {
 })
 
 print("\nMetadata target:", metadata.get("target"))
+
+# Compare the deployed image endpoint with direct inference on the same pixels.
+from app import app
+
+pixels = np.full((28, 28, 3), 128, dtype=np.uint8)
+expected = cnn_model.predict((pixels.astype(np.float32) / 255.0)[None, ...], verbose=0)[0]
+image_buffer = io.BytesIO()
+Image.fromarray(pixels).save(image_buffer, format="PNG")
+image_buffer.seek(0)
+with app.test_client() as client:
+    response = client.post("/api/predict/skin", data={"image": (image_buffer, "sample.png")})
+assert response.status_code == 200, response.get_json()
+actual = response.get_json()["class_scores"]
+class_names = ["akiec", "bcc", "bkl", "df", "mel", "nv", "vasc"]
+np.testing.assert_allclose([actual[name] for name in class_names], expected, atol=1e-6)
+print("Skin API scores match direct normalized CNN inference.")
 print("\nAll local model-loading checks passed.")

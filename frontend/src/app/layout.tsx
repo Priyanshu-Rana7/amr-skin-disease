@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Skin & AMR Research Studio",
-  description: "Educational skin lesion classification and AMR prediction demo.",
+  description: "Explore two independent research models: dermatoscopic lesion classification and MDR prediction from historical case records. View their inputs, evidence, and limitations.",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

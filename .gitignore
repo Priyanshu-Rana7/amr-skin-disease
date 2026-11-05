@@ -40,3 +40,10 @@ pnpm-debug.log*
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# Local agent skill installs (skills-lock.json pins the versions)
+.agents/
+
+# Experimental model artifacts not used by the deployed app
+models/experimental_*.keras
+

@@ -127,10 +127,9 @@ def predict_skin():
                 return jsonify({"error": "Upload a JPEG, PNG, or WebP image."}), 400
             image = image.convert("RGB")
             image = image.resize((28, 28))
-            image_array = np.asarray(image, dtype=np.float32)
+            image_array = np.asarray(image, dtype=np.float32) / 255.0
 
-        # DermaMNIST images use pixel values in the 0–255 range.
-        # Keep this consistent with the preprocessing used during training.
+        # Match the selected CNN notebook's 0–1 training inputs.
         model_input = np.expand_dims(image_array, axis=0)
 
         scores = cnn_model.predict(model_input, verbose=0)[0]
@@ -190,8 +189,8 @@ def predict_amr():
 
         if not np.isfinite(year_case):
             raise ValueError("Year Case must be a finite number.")
-        if not year_case.is_integer() or not 1900 <= year_case <= 2100:
-            raise ValueError("Year Case must be a whole year from 1900 to 2100.")
+        if not year_case.is_integer() or not 2019 <= year_case <= 2021:
+            raise ValueError("Year Case must be 2019, 2020, or 2021, the years represented in the training data.")
         allowed = {"Sex": {"F", "M"}, "Age Group": {"13-18", "19-35", "36-59", "≤12", "≥60"}, "On Abx": {"No", "Yes"}}
         for feature, values in allowed.items():
             if str(data[feature]).strip() not in values:

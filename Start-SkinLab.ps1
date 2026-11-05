@@ -42,12 +42,13 @@ function Test-PortAvailable {
 
 function Start-SkinLabWindow {
     param(
-        [Parameter(Mandatory = $true)][string]$Command
+        [Parameter(Mandatory = $true)][string]$FilePath,
+        [Parameter(Mandatory = $true)][string[]]$Arguments,
+        [Parameter(Mandatory = $true)][string]$WorkingDirectory
     )
 
-    Start-Process -FilePath 'powershell.exe' `
-        -WindowStyle Minimized `
-        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-NoExit', '-Command', $Command) | Out-Null
+    Start-Process -FilePath $FilePath -ArgumentList $Arguments `
+        -WorkingDirectory $WorkingDirectory -WindowStyle Hidden | Out-Null
 }
 
 if (-not (Test-Path -LiteralPath $backendPython)) {
@@ -70,9 +71,8 @@ if (Test-WebReady -Url $backendHealthUrl -TimeoutSec 2) {
         throw "Port $backendPort is already in use by another application. Close it and retry, or stop the stale process."
     }
 
-    $backendCommand = "Set-Location -LiteralPath '$project'; & '$backendPython' 'src/app.py'"
     Write-Host 'Starting the Flask backend...'
-    Start-SkinLabWindow -Command $backendCommand
+    Start-SkinLabWindow -FilePath $backendPython -Arguments @('src/app.py') -WorkingDirectory $project
 
     # TensorFlow model loading can take 20-60 seconds, so poll until ready.
     $deadline = (Get-Date).AddSeconds(120)
@@ -94,9 +94,10 @@ if ($port -gt 3010) {
     throw 'Ports 3000-3010 are all in use. Close another application and retry.'
 }
 
-$frontendCommand = "Set-Location -LiteralPath '$frontendDir'; `$env:NEXT_TELEMETRY_DISABLED = '1'; pnpm exec next dev --hostname 127.0.0.1 --port $port"
 Write-Host "Starting the Next.js frontend on port $port..."
-Start-SkinLabWindow -Command $frontendCommand
+$nodeCommand = Get-Command node -ErrorAction Stop
+$nextCli = Join-Path $frontendDir 'node_modules\next\dist\bin\next'
+Start-SkinLabWindow -FilePath $nodeCommand.Source -Arguments @(('"' + $nextCli + '"'), 'dev', '--hostname', '127.0.0.1', '--port', "$port") -WorkingDirectory $frontendDir
 
 $frontendUrl = "http://127.0.0.1:$port"
 $deadline = (Get-Date).AddMinutes(3)
@@ -108,4 +109,4 @@ while (-not (Test-WebReady -Url $frontendUrl -TimeoutSec 5)) {
 }
 
 Start-Process $frontendUrl
-Write-Host "SkinLab is running at $frontendUrl. Close the backend and frontend terminal windows to stop it."
+Write-Host "SkinLab is running at $frontendUrl. The servers run in the background."
