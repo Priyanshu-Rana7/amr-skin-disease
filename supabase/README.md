@@ -92,6 +92,8 @@ The hosted project for this repository is baselined to the committed versions:
 20261103175940 case_select_returning
 ```
 
+After repairing the base project, re-run the production deployment with **Branches → ⋯ → Resync branch**. A healthy run ends with `INFO All migrations are up to date.` instead of the migration-version error.
+
 If only a preview branch is broken, reset it from **Branches → reset branch** (or delete it and reopen the pull request). Preview data is disposable and is recreated from the base project plus the committed migrations.
 
 Do not force the initial migration onto an existing schema with `supabase db push --include-all`. `202611030001_initial_case_workflow.sql` uses `create type` and `create table` without `if not exists`, so re-running it will fail.
