@@ -7,7 +7,8 @@ export default async function SkinLabServer({ view }: { view: View }) {
   const { data: { user } } = await supabase.auth.getUser();
   if (view === "home" && user) redirect("/dashboard");
   if (view !== "home") {
-    if (!user) redirect("/login");
+    if (!user && !["research", "how", "about"].includes(view)) redirect("/login");
+    if (!user) return <SkinLabClient view={view} signedIn={false} />;
     const { data: profile } = await supabase.from("profiles").select("role,is_active").eq("id", user.id).maybeSingle();
     if (!profile?.is_active || profile.role !== "patient") redirect("/dashboard");
   }

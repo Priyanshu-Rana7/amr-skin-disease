@@ -36,6 +36,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Local report drafts, rendered page reviews, and screenshots
+/.report-work/
+
 # OS and editor junk
 .DS_Store
 Thumbs.db

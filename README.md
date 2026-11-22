@@ -8,9 +8,13 @@ The MDR form accepts exact age and maps it to the age bands used by the saved mo
 
 Sign in or create a patient account to submit a research case. Submissions are assigned to the active doctor with the fewest open cases, and the patient sees the result as preliminary while they can message the reviewer. Assigned doctors can message the patient, add private notes, and publish a patient-facing review. Supabase stores the case, model output, messages, review, and private image reference under row-level security. Apply the initial schema and subsequent migrations in [`supabase/README.md`](supabase/README.md) before using submissions. Use only synthetic or de-identified demonstration records.
 
+Uploaded images are kept in a private Storage bucket. The app uses generated object names and does not save the original upload filename; do not include personal details in image contents or case notes.
+
 If model inference fails after a case is created, the submission remains in the workspace for doctor review. The form shows a link to that case. A lesion image is stored before inference so the assigned doctor can still inspect it. A missing model result is shown as pending or unavailable on the case page; it is never presented as a successful prediction.
 
-For a complete demonstration, sign in as a patient, submit each case type, open its case page, sign in as the assigned doctor, review the case and publish an assessment, then sign back in as the patient to read the review and send a message. Doctor accounts must be assigned through Supabase administration; ordinary sign-up creates patient accounts.
+For a complete demonstration, sign in as a patient, submit each case type, open its case page, sign in as the assigned doctor, review the case and publish an assessment, then sign back in as the patient to read the review and send a message. Doctor accounts must be assigned through Supabase administration; ordinary sign-up creates patient accounts. See [`docs/DEMO_RUNBOOK.md`](docs/DEMO_RUNBOOK.md) for a presentation checklist.
+
+Project administration is available at `/dashboard/admin` to active accounts with the `admin` role. It manages patient/doctor account access, case assignment and status, and provides a recent action log. Create the initial `admin@local.com` Auth user and promote its profile through the secure steps in [`supabase/README.md`](supabase/README.md); do not share its password. Apply the admin migration before using the panel.
 
 Supabase Auth requires at least six password characters, matching the sign-up form. Supabase's leaked-password protection is available only on Pro plans; the current Free project cannot enable it.
 
@@ -20,15 +24,29 @@ Double-click `Start-SkinLab.bat`. It starts Flask and Next.js in the background,
 
 Frontend edits appear automatically through Next.js development mode. Flask restarts when backend Python files change. Changes to Python or Node dependencies require reinstalling those dependencies.
 
+Install dependencies once before the first run:
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install -r requirements.txt
+Set-Location frontend
+pnpm install
+Copy-Item .env.example .env.local
+```
+
+Fill `frontend/.env.local` with the Supabase URL and publishable key from your project. These browser-facing values identify the public project; never put a service-role secret there. Apply the database migrations as described in [`supabase/README.md`](supabase/README.md).
+
 To run manually, open two PowerShell windows:
 
-1. From the project root, run `.venv\\Scripts\\python.exe src\\app.py`.
+1. From the project root, run `.venv\Scripts\python.exe src\app.py`.
 2. From `frontend`, run `pnpm exec next dev` and open `http://localhost:3000`.
 
-The authenticated Next.js case route calls Flask on port 5000 from the server, then saves each output to the assigned case in Supabase. Raw Flask prediction endpoints are not exposed through the Next.js app. The models are exploratory research artifacts; results are not suitable for diagnosis or treatment decisions.
+The authenticated Next.js case route calls Flask on localhost (port 5000 by default; the Windows launcher selects an alternate port when needed), then saves each output to the assigned case in Supabase. Raw Flask prediction endpoints are not exposed through the Next.js app. The models are exploratory research artifacts; results are not suitable for diagnosis or treatment decisions.
 
 ## Active model sources
 
 The deployed CNN is `models/rebuilt_baseline_cnn.keras`, selected in `SkinDisease_AMR_Integrated_Project.ipynb`. Its input is a 28 × 28 RGB image scaled to 0–1. The deployed AMR pipeline is `models/amr_logistic_pipeline.joblib`, trained in `AMR Prediction.ipynb` on 171 labeled cases from 2019–2021. `models/model_metadata.json` records its features, class counts, and threshold. These notebooks and source datasets were supplied separately from this repository; preserve their versions alongside any future model update.
 
 Run `.venv\Scripts\python.exe src\verify_models.py` to compare the skin API's class scores with direct inference on the same image. The reported evaluation figures on the Research page come from the active notebooks; this check validates serving consistency, not model accuracy.
+
+Run `.venv\Scripts\python.exe -m unittest discover -s tests -v` for API smoke checks covering health, malformed images, class score shape, AMR input validation, and probability output. These checks verify the application contract, not clinical performance.

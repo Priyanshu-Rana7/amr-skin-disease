@@ -24,6 +24,8 @@ After the initial schema, migrations 002–005 add:
 - `202611030003_restrict_definer_rpc.sql` moves RLS helpers to a non-exposed schema and removes API execution grants from trigger-only functions.
 - `202611030004_patient_case_role.sql` restricts case creation to authenticated patient profiles.
 - `202611030005_case_fk_indexes.sql` adds indexes for foreign-key and case-history lookups.
+- `202611220001_admin_management.sql` adds the admin-only account directory and audit log, and permits administrators to manage patient/doctor access and case assignment/status. It keeps internal doctor notes private and prevents administrators from writing to patient conversations.
+- `20261122075840_fix_admin_case_update_rls.sql` removes an RLS recursion loop during case assignment by checking doctor eligibility through a private, admin-only helper.
 
 ## Doctor demo accounts
 
@@ -36,6 +38,37 @@ where id = 'PASTE_AUTH_USER_UUID_HERE';
 ```
 
 Repeat for the other test accounts. The signup trigger creates each profile with the patient role; public signup cannot choose or grant a doctor role. Keep demo passwords private and change them before any shared presentation.
+
+## Administrator account
+
+Create `admin@local.com` through **Authentication → Users → Add user** in the Supabase Dashboard and set its password there. Keep the password private; it does not need to be shared with the development team. After the account is created, copy its Auth user UUID and promote that profile once through the SQL Editor:
+
+```sql
+update public.profiles
+set role = 'admin', display_name = 'Project Administrator'
+where id = 'PASTE_AUTH_USER_UUID_HERE'
+  and role = 'patient';
+```
+
+The profile is initially created with the patient role by the signup trigger. The app does not allow self-promotion or creation of additional administrators. An administrator can manage patient/doctor display names, roles and active status, route cases to active doctors, update case status, inspect case records, and review recent administrative actions. Administrator case views are read-only; conversation messages and doctor-only notes remain restricted. Keep project-owner access available before deactivating any account used for administration.
+
+Apply the migration with the CLI procedure above before promoting the account or using `/dashboard/admin`. The admin console intentionally does not create Auth users or reset passwords; use Supabase Authentication for those operations.
+
+If `/dashboard/admin` reports that the admin email directory or activity history is unavailable, check whether both support tables exist:
+
+```sql
+select
+  to_regclass('public.admin_user_directory') as admin_user_directory,
+  to_regclass('public.admin_audit_log') as admin_audit_log;
+```
+
+If both are present, refresh the Data API schema cache in the SQL Editor:
+
+```sql
+notify pgrst, 'reload schema';
+```
+
+If either table is missing, apply `202611220001_admin_management.sql` once with the Supabase CLI (`supabase db push --linked` after linking the project). Do not rerun an already-applied migration. The migration sends the PostgREST schema reload notification when it commits.
 
 ## Important scope
 
